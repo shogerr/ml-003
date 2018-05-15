@@ -11,12 +11,12 @@ from torchvision import datasets, transforms
 import numpy as np
 import seaborn as sns
 
-epochs = 10
+epochs = 1
 batch_size = 32
 
-class SigNet(nn.Module):
+class Net(nn.Module):
     def __init__(self, dropout=0.2):
-        super(SigNet, self).__init__()
+        super(Net, self).__init__()
         self.fc1 = nn.Linear(32*32*3, 100)
         self.fc1_drop = nn.Dropout(dropout)
         self.fc2 = nn.Linear(100, 10)
@@ -25,37 +25,8 @@ class SigNet(nn.Module):
         x = x.view(-1, 32*32*3)
         x = F.sigmoid(self.fc1(x))
         x = self.fc1_drop(x)
-        return F.log_softmax(self.fc2(x), dim=1)
+        return F.sigmoid(self.fc2(x))
 
-class ReluNet(nn.Module):
-    def __init__(self, dropout=0.2):
-        super(ReluNet, self).__init__()
-        self.fc1 = nn.Linear(32*32*3, 100)
-        self.fc1_drop = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(100, 10)
-
-    def forward(self, x):
-        x = x.view(-1, 32*32*3)
-        x = F.relu(self.fc1(x))
-        x = self.fc1_drop(x)
-        return F.log_softmax(self.fc2(x), dim=1)
-
-class TwoLayerNet(nn.Module):
-    def __init__(self, dropout=0.2):
-        super(TwoLayerNet, self).__init__()
-        self.fc1 = nn.Linear(32*32*3, 50)
-        self.fc1_drop = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(50, 50)
-        self.fc2_drop = nn.Dropout(dropout)
-        self.fc3 = nn.Linear(50, 10)
-
-    def forward(self, x):
-        x = x.view(-1, 32*32*3)
-        x = F.relu(self.fc1(x))
-        x = self.fc1_drop(x)
-        x = F.relu(self.fc2(x))
-        x = self.fc2_drop(x)
-        return F.log_softmax(self.fc3(x), dim=1)
 
 def train(epoch, model, optimizer, loss_vector, log_interval=100):
     model.train()
@@ -115,13 +86,6 @@ def run_network(epochs, model, optimizer):
 
     return losst, lossv, accv
 
-def run_test(m, lr, momentum, decay, dropout):
-    model = m(dropout)
-    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=decay)
-    r = run_network(epochs, model, optimizer)
-    s = format_results(epochs, lr, momentum, decay, dropout, r[0], r[1], r[2])
-    return s
-
 transform = transforms.Compose([
                 transforms.ToTensor()
                 ])
@@ -136,39 +100,11 @@ validation_loader = torch.utils.data.DataLoader(
             transform=transform),
             batch_size=batch_size, shuffle=False)
 
+def run_test(m, lr, momentum, decay, dropout):
+    model = m(dropout)
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=decay)
+    r = run_network(epochs, model, optimizer)
+    s = format_results(epochs, lr, momentum, decay, dropout, r[0], r[1], r[2])
+    return s
 
-# # Run both sigmoid and relu activation functions through a range of learning rates
-# # Sigmoid network
-# results = np.empty((0,8))
-# for lr in [.1, .01, .001, .0001]:
-#     s = run_test(SigNet, lr, 0.5, 0, 0.2)
-#     results = np.append(results, s, axis=0)
-# np.savetxt('sigmoid_results.csv', results)
-# 
-# # Relu network
-# results = np.empty((0,8))
-# for lr in [.1, .01, .001, .0001]:
-#     s = run_test(ReluNet, lr, 0.5, 0, 0.2)
-#     results = np.append(results, s, axis=0)
-# np.savetxt('relu_results.csv', results)
-# 
-# # Compare different values of momentum
-# results = np.empty((0,8))
-# for momentum in [.1, .25, 0.5, 0.75, 0.9]:
-#     s = run_test(ReluNet, .001, momentum, 0, 0.2)
-#     results = np.append(results, s, axis=0)
-# np.savetxt('momentum_results.csv', results)
-# 
-# # Compare different dropout rates
-# results = np.empty((0, 8))
-# for decay in [0, .1, .25, .5, .75, .9]:
-#     s = run_test(ReluNet, .001, .9, decay, 0.2)
-#     results = np.append(results, s, axis=0)
-# np.savetxt('decay_results.csv', results)
-# 
-# #
-results = np.empty((0, 8))
-for dropout in [0, .2, .5, .75, .9]:
-    s = run_test(ReluNet, .001, .9, 0, dropout)
-    results = np.append(results, s, axis=0)
-np.savetxt('dropout_results.csv', results)
+run_test(Net, .001, .9, 0, 0.2)
