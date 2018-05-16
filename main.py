@@ -4,15 +4,36 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
-
+from torch.utils.data.sampler import Sampler
 import torchvision
 from torchvision import datasets, transforms
+from torch.utils.data.sampler import SubsetRandomSampler
 
 import numpy as np
 import seaborn as sns
 
-epochs = 20
+epochs = 10
 batch_size = 32
+
+# See https://github.com/pytorch/vision/issues/168
+class ChunkSampler(Sampler):
+    """Samples elements sequentially from some offset. 
+    Arguments:
+        num_samples: # of desired datapoints
+        start: offset where we should start selecting from
+    """
+    def __init__(self, num_samples, start = 0):
+        self.num_samples = num_samples
+        self.start = start
+
+    def __iter__(self):
+        return iter(range(self.start, self.start + self.num_samples))
+
+    def __len__(self):
+        return self.num_samples
+
+NUM_TRAIN = 40000
+NUM_VAL = 10000
 
 class SigNet(nn.Module):
     def __init__(self, dropout=0.2):
@@ -70,30 +91,33 @@ def train(epoch, model, optimizer, loss_vector, log_interval=100):
         optimizer.step()
         if batch_idx % log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
+                epoch, batch_idx * len(data), 40000,
                 100. * batch_idx / len(train_loader), loss.item()))
     val_loss /= len(train_loader)
     loss_vector.append(val_loss)
 
-def validate(model, loss_vector, accuracy_vector):
+def validate(model, loader, loss_vector, accuracy_vector, test_name='Validation'):
     model.eval()
-    val_loss, correct = 0, 0
+    val_loss, correct, num_samples = 0, 0, 0
     with torch.no_grad():
-        for data, target in validation_loader:
+        for data, target in loader:
             data, target = Variable(data), Variable(target)
             output = model(data)
             val_loss += F.nll_loss(output, target).item()
             pred = output.data.max(1)[1]
             correct += pred.eq(target.data).cpu().sum()
+            num_samples += pred.size(0)
 
-    val_loss /= len(validation_loader)
+    val_loss /= num_samples 
     loss_vector.append(val_loss)
 
-    accuracy = 100. * correct / len(validation_loader.dataset)
+    accuracy = 100. * correct / num_samples
     accuracy_vector.append(accuracy)
 
-    print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            val_loss, correct, len(validation_loader.dataset), accuracy))
+    print('\n' + test_name + ' set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+            val_loss, correct, num_samples, accuracy))
+
+    return val_loss, correct, num_samples, accuracy
 
 def format_results(epochs, lr, momentum, decay, dropout, losst, lossv, accv):
     results = np.append(np.array([np.arange(1, epochs+1)]).T, np.array([losst]).T, axis=1)
@@ -111,7 +135,7 @@ def run_network(epochs, model, optimizer):
 
     for epoch in range(1, epochs+1):
         train(epoch, model, optimizer, losst)
-        validate(model, lossv, accv)
+        validate(model, validation_loader, lossv, accv)
 
     return losst, lossv, accv
 
@@ -122,6 +146,13 @@ def run_test(m, lr, momentum, decay, dropout):
     s = format_results(epochs, lr, momentum, decay, dropout, r[0], r[1], r[2])
     return s
 
+def run_model_test(m, lr, momentum, decay, dropout):
+    losst, lossv, accv = [], [], []
+    model = m(dropout)
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=decay)
+    run_network(epochs, model, optimizer)
+    return validate(model, test_loader, lossv, accv, test_name='Test')
+
 transform = transforms.Compose([
                 transforms.ToTensor()
                 ])
@@ -129,14 +160,21 @@ transform = transforms.Compose([
 train_loader = torch.utils.data.DataLoader(
         datasets.CIFAR10(root='./data', train=True, download=True,
             transform=transform),
-            batch_size=batch_size, shuffle=True)
+            sampler=ChunkSampler(NUM_TRAIN, 0),
+            batch_size=batch_size)
 
 validation_loader = torch.utils.data.DataLoader(
+        datasets.CIFAR10(root='./data', train=True,
+            transform=transform),
+            sampler=ChunkSampler(NUM_VAL, NUM_TRAIN),
+            batch_size=batch_size)
+
+test_loader = torch.utils.data.DataLoader(
         datasets.CIFAR10(root='./data', train=False,
             transform=transform),
             batch_size=batch_size, shuffle=False)
 
-def two_layer_testing():
+def two_layer_tuning():
     results = np.empty((0,8))
     for lr in [.1, .01, .001]:
         s = run_test(TwoLayerNet, lr, .5, 0, 0)
@@ -155,7 +193,7 @@ def two_layer_testing():
         results = np.append(results, s, axis=0)
     np.savetxt('twolayer_dropout_results.csv', results)
 
-def single_layer_testing():
+def single_layer_tuning():
     # Run both sigmoid and relu activation functions through a range of learning rates
     # Sigmoid network
     results = np.empty((0,8))
@@ -173,24 +211,36 @@ def single_layer_testing():
 
     # Compare different values of momentum
     results = np.empty((0,8))
-    for momentum in [.1, .25, 0.5, 0.75, 0.9]:
+    for momentum in [.25, 0.5, 0.75, 0.9]:
         s = run_test(ReluNet, .001, momentum, 0, 0.2)
         results = np.append(results, s, axis=0)
     np.savetxt('momentum_results.csv', results)
 
     # Compare different dropout rates
     results = np.empty((0, 8))
-    for decay in [0, .1, .25, .5, .75, .9]:
+    for decay in [0, .1, .25, .5]:
         s = run_test(ReluNet, .001, .9, decay, 0.2)
         results = np.append(results, s, axis=0)
     np.savetxt('decay_results.csv', results)
 
     # Compare dropouts
     results = np.empty((0, 8))
-    for dropout in [0, .2, .5, .75, .9]:
+    for dropout in [0, .2, .5, .75]:
         s = run_test(ReluNet, .001, .9, 0, dropout)
         results = np.append(results, s, axis=0)
     np.savetxt('dropout_results.csv', results)
 
-single_layer_testing()
-two_layer_testing()
+def single_layer_test(model_class):
+    r = run_model_test(model_class, .001, 0.9, 0, 0.2)
+    np.savetxt('single_layer_test.csv', np.array(r))
+
+def two_layer_test():
+    r = run_model_test(TwoLayerNet, .0001, .9, 0, 0.2)
+    np.savetxt('single_layer_test.csv', np.array(r))
+
+single_layer_tuning()
+single_layer_test(SigNet)
+single_layer_test(ReluNet)
+
+two_layer_tuning()
+two_layer_test()
