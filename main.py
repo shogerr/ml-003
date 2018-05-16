@@ -11,7 +11,7 @@ from torchvision import datasets, transforms
 import numpy as np
 import seaborn as sns
 
-epochs = 10
+epochs = 20
 batch_size = 32
 
 class SigNet(nn.Module):
@@ -136,39 +136,61 @@ validation_loader = torch.utils.data.DataLoader(
             transform=transform),
             batch_size=batch_size, shuffle=False)
 
+def two_layer_testing():
+    results = np.empty((0,8))
+    for lr in [.1, .01, .001]:
+        s = run_test(TwoLayerNet, lr, .5, 0, 0)
+        results = np.append(results, s, axis=0)
+    np.savetxt('twolayer_lr_results.csv', results)
 
-# # Run both sigmoid and relu activation functions through a range of learning rates
-# # Sigmoid network
-# results = np.empty((0,8))
-# for lr in [.1, .01, .001, .0001]:
-#     s = run_test(SigNet, lr, 0.5, 0, 0.2)
-#     results = np.append(results, s, axis=0)
-# np.savetxt('sigmoid_results.csv', results)
-# 
-# # Relu network
-# results = np.empty((0,8))
-# for lr in [.1, .01, .001, .0001]:
-#     s = run_test(ReluNet, lr, 0.5, 0, 0.2)
-#     results = np.append(results, s, axis=0)
-# np.savetxt('relu_results.csv', results)
-# 
-# # Compare different values of momentum
-# results = np.empty((0,8))
-# for momentum in [.1, .25, 0.5, 0.75, 0.9]:
-#     s = run_test(ReluNet, .001, momentum, 0, 0.2)
-#     results = np.append(results, s, axis=0)
-# np.savetxt('momentum_results.csv', results)
-# 
-# # Compare different dropout rates
-# results = np.empty((0, 8))
-# for decay in [0, .1, .25, .5, .75, .9]:
-#     s = run_test(ReluNet, .001, .9, decay, 0.2)
-#     results = np.append(results, s, axis=0)
-# np.savetxt('decay_results.csv', results)
-# 
-# #
-results = np.empty((0, 8))
-for dropout in [0, .2, .5, .75, .9]:
-    s = run_test(ReluNet, .001, .9, 0, dropout)
-    results = np.append(results, s, axis=0)
-np.savetxt('dropout_results.csv', results)
+    results = np.empty((0,8))
+    for momentum in [.1, 0.5, 0.9]:
+        s = run_test(TwoLayerNet, .0001, momentum, 0, 0.2)
+        results = np.append(results, s, axis=0)
+    np.savetxt('twolayer_momentum_results.csv', results)
+
+    results = np.empty((0,8))
+    for dropout in [0.0, 0.2, 0.5]:
+        s = run_test(TwoLayerNet, .0001, .9, 0, dropout)
+        results = np.append(results, s, axis=0)
+    np.savetxt('twolayer_dropout_results.csv', results)
+
+def single_layer_testing():
+    # Run both sigmoid and relu activation functions through a range of learning rates
+    # Sigmoid network
+    results = np.empty((0,8))
+    for lr in [.1, .01, .001, .0001]:
+        s = run_test(SigNet, lr, 0.5, 0, 0.2)
+        results = np.append(results, s, axis=0)
+    np.savetxt('sigmoid_results.csv', results)
+
+    # Relu network
+    results = np.empty((0,8))
+    for lr in [.1, .01, .001, .0001]:
+        s = run_test(ReluNet, lr, 0.5, 0, 0.2)
+        results = np.append(results, s, axis=0)
+    np.savetxt('relu_results.csv', results)
+
+    # Compare different values of momentum
+    results = np.empty((0,8))
+    for momentum in [.1, .25, 0.5, 0.75, 0.9]:
+        s = run_test(ReluNet, .001, momentum, 0, 0.2)
+        results = np.append(results, s, axis=0)
+    np.savetxt('momentum_results.csv', results)
+
+    # Compare different dropout rates
+    results = np.empty((0, 8))
+    for decay in [0, .1, .25, .5, .75, .9]:
+        s = run_test(ReluNet, .001, .9, decay, 0.2)
+        results = np.append(results, s, axis=0)
+    np.savetxt('decay_results.csv', results)
+
+    # Compare dropouts
+    results = np.empty((0, 8))
+    for dropout in [0, .2, .5, .75, .9]:
+        s = run_test(ReluNet, .001, .9, 0, dropout)
+        results = np.append(results, s, axis=0)
+    np.savetxt('dropout_results.csv', results)
+
+single_layer_testing()
+two_layer_testing()
